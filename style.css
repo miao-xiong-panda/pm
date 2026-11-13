@@ -112,6 +112,7 @@ form.reply button{align-self:flex-start;font:inherit;color:var(--panel);backgrou
 
 /* a page's versions and a version's diff */
 .versions .list li{padding:4px 0}
+.versions p.unpublished{margin:.3rem 0}
 pre.diff .add{background:var(--done-bg);color:var(--done)}
 pre.diff .del{background:var(--block-bg);color:var(--block)}
 details.same{margin:.4rem 0}

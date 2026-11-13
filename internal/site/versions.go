@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Yeeef/pm/internal/item"
 	"github.com/Yeeef/pm/internal/records"
 	"github.com/Yeeef/pm/internal/store"
 )
@@ -174,7 +175,8 @@ func (s *Served) withBar(page, rel string, current *version, depth int) (string,
 
 // bar is the version bar of the page of rel, its links relative to up (the site's root from the page): the published
 // version, then each draft that changes rel, and the current one, with its label, its state and links to its render
-// and its diffs; "" on a published page that no draft changes.
+// and its diffs; "" on a published page that no draft changes. On a published design page it opens with the
+// unpublished-edits line of each draft that changes it.
 func (s *Served) bar(rel string, current *version, up string) string {
 	var lis []string
 	for _, v := range s.versions {
@@ -221,8 +223,12 @@ func (s *Served) bar(rel string, current *version, up string) string {
 	case !s.published(rel):
 		published = `published<span class="k">not published</span>`
 	}
-	return `<div class="note draft versions"><p class="cap">VERSIONS</p><ul class="list"><li>` + published + "</li>" +
-		strings.Join(lis, "") + "</ul></div>\n"
+	head := ""
+	if current == nil {
+		head = s.unpublished(rel, up) // below
+	}
+	return `<div class="note draft versions"><p class="cap">VERSIONS</p>` + head + `<ul class="list"><li>` + published +
+		"</li>" + strings.Join(lis, "") + "</ul></div>\n"
 }
 
 // published is whether the published site has the page of rel.
@@ -281,4 +287,85 @@ func (s *Served) diffPage(v *version, rel, vs string) (string, bool, error) {
 		return "", true, err
 	}
 	return s.withBar(text, rel, v, 2)
+}
+
+// The unpublished-edits line: a published design page that a draft changes opens its version bar with one line per
+// such draft, saying how many of the page's sections it changes (an edit is a section the diff marks changed, added
+// or removed), the open sprint whose close publishes it (the open sprints whose record links the page in its Design
+// pages section; pm sprint close publishes a design page, the record-drafts page), and links to the draft's render
+// and to its diff, which highlights each changed line. A sprint that is open but that no session holds still names
+// the page; a draft no open sprint links says so, since no close will publish it.
+
+// unpublished is the unpublished-edits lines of the published page of rel, its links relative to up; "" when rel is
+// no design page or no draft changes its text.
+func (s *Served) unpublished(rel, up string) string {
+	rec := s.record(rel)
+	if rec == nil || rec.Type() != "design" {
+		return ""
+	}
+	published, _ := s.text(nil, rel)
+	var lines []string
+	for _, v := range s.versions {
+		text, changes := v.draft.Files[rel+".md"]
+		if !changes || text == nil {
+			continue
+		}
+		n := sectionsChanged(published, *text)
+		if n == 0 {
+			continue
+		}
+		edits := fmt.Sprintf("%d unpublished edits", n)
+		if n == 1 {
+			edits = "1 unpublished edit"
+		}
+		at := up + DraftsDir + v.draft.Name + "/" + rel
+		lines = append(lines, `<p class="unpublished"><b>`+edits+"</b> in draft "+esc(v.draft.Name)+", "+
+			s.publishedBy(rec, up)+`: <a href="`+esc(at+".html")+`">view the draft</a> · <a href="`+
+			esc(at+".diff.html")+`">see what changed</a></p>`)
+	}
+	return strings.Join(lines, "")
+}
+
+// publishedBy names the open sprints whose close publishes the design page rec, linked relative to up.
+func (s *Served) publishedBy(rec *Record, up string) string {
+	slug := strings.TrimPrefix(rec.Rel, "design/")
+	var sprints []string
+	for _, r := range s.recs {
+		if r.Type() != "sprint" || !slices.Contains(records.DesignLinks(r), slug) {
+			continue
+		}
+		if it := s.items.Get(r.Bead()); it == nil || it.Status == item.Closed {
+			continue
+		}
+		sprints = append(sprints, `<a href="`+esc(up+r.Out())+`">`+esc(r.Bead())+"</a> ("+esc(r.Title())+")")
+	}
+	switch len(sprints) {
+	case 0:
+		return "which no open sprint links, so no sprint close publishes it yet"
+	case 1:
+		return "published when sprint " + sprints[0] + " closes"
+	}
+	return "published when the first of sprints " + strings.Join(sprints, ", ") + " closes"
+}
+
+// record is the published record at rel; nil when there is none.
+func (s *Served) record(rel string) *Record {
+	for _, r := range s.recs {
+		if r.Rel == rel {
+			return r
+		}
+	}
+	return nil
+}
+
+// sectionsChanged is how many sections the diff from was to now marks changed, added or removed (sectionDiff).
+func sectionsChanged(was, now string) int {
+	a, b := sections(was), sections(now)
+	n := 0
+	for _, e := range align(keys(a), keys(b)) {
+		if e.op != ' ' || !slices.Equal(a[e.A].lines, b[e.B].lines) {
+			n++
+		}
+	}
+	return n
 }

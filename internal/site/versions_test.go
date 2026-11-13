@@ -299,3 +299,43 @@ func TestANestedFenceClosesOnlyOnARunAsLong(t *testing.T) {
 		t.Errorf("sections: %+v", got)
 	}
 }
+
+// A published design page that a draft changes opens its version bar with the draft's unpublished edits: how many
+// sections it changes, the open sprint whose close publishes it, and links to the draft and to its diff. The draft's
+// own page, a page that is no design page, and a draft that holds the published text say nothing of it.
+func TestADesignPageNamesItsUnpublishedEdits(t *testing.T) {
+	inZone(t)
+	dir := constructsStore(t, nil)
+	one := edited(t, dir, "design/parser.md", "Records need a parser.", "Records need a faster parser.")
+	two := strings.Replace(*one, "## Design\n", "## Design\n\nIt streams.\n", 1)
+	if two == *one {
+		t.Fatal("design/parser.md has no ## Design heading")
+	}
+	s, _ := servedWith(t,
+		store.Draft{Name: "s1", Label: "worktree s1", State: "committed", Files: map[string]*string{
+			"design/parser.md": &two, "sprints/demo-1.md": edited(t, dir, "sprints/demo-1.md", "Ship the", "Ship")}},
+		store.Draft{Name: "store", Label: "uncommitted edits", State: "uncommitted edits",
+			Files: map[string]*string{"design/parser.md": one}})
+
+	page := get(t, s, "design/parser.html")
+	for _, want := range []string{
+		`<p class="unpublished"><b>2 unpublished edits</b> in draft s1, published when sprint ` +
+			`<a href="../sprints/demo-1.html">demo.1</a> (First) closes: ` +
+			`<a href="../drafts/s1/design/parser.html">view the draft</a> · ` +
+			`<a href="../drafts/s1/design/parser.diff.html">see what changed</a></p>`,
+		`<b>1 unpublished edit</b> in draft store,`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the published design page lacks %q:\n%s", want, page)
+		}
+	}
+	for _, p := range []string{"drafts/s1/design/parser.html", "drafts/s1/sprints/demo-1.html", "sprints/demo-1.html",
+		"index.html"} {
+		if strings.Contains(get(t, s, p), `class="unpublished"`) {
+			t.Errorf("%s names unpublished edits; only a published design page does", p)
+		}
+	}
+	if got := sectionsChanged(*one, *one); got != 0 {
+		t.Errorf("a text against itself has %d sections changed, want 0", got)
+	}
+}
