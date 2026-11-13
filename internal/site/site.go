@@ -1143,7 +1143,8 @@ const DoneSprintsShown = 8
 // within a day), with both dates; without dates, by title.
 func RenderIndex(recs []*Record, items *Items, siteName string, dates Dates) (string, error) {
 	c := &ctx{}
-	md := func(s string) (string, error) { return render(plainMD, s) }
+	needs := needMD(recs)
+	md := func(s string) (string, error) { return render(needs, s) }
 	var projects []*Record
 	for _, r := range recs {
 		if r.Type() == "project" {

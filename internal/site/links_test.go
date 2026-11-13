@@ -68,3 +68,36 @@ func TestCheckReportsALinkToNoRecord(t *testing.T) {
 		t.Errorf("broken links %q, want %q", c.broken, want)
 	}
 }
+
+// A relative .md link in a need's text points at the record's page on every page that shows the need's card: the
+// sprint's page, where the link resolves from the sprint, and the overview at the site's root, where it resolves as
+// from one directory under the store (needBase), a dated doc by its slug included.
+func TestANeedsLinkToARecordPointsAtItsPage(t *testing.T) {
+	inZone(t)
+	need := `{"id": "demo.1.30", "type": "need", "title": "Read the notes", "status": "open", "parent": "demo.1", ` +
+		`"created_at": "2026-10-03T09:00:00Z", "need": {"kind": "action"}, "description": ` +
+		`"Read [the notes](../docs/notes.md#why), [the plan](../docs/2026-10-03-plan.md) and ` +
+		`[the parser](../design/parser.md)."}`
+	pages, err := renderStore(constructsStore(t, nil), constructsItems(t, need))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"index.html", "sprints/demo-1.html"} {
+		page := pages[p]
+		start := strings.Index(page, `id="need-demo.1.30"`)
+		if start < 0 {
+			t.Fatalf("%s has no card for demo.1.30", p)
+		}
+		card := page[start:]
+		card = card[:strings.Index(card, "</div>")]
+		for _, want := range []string{`href="../docs/2026-10-02-notes.html#why"`, `href="../docs/2026-10-03-plan.html"`,
+			`href="../design/parser.html"`} {
+			if !strings.Contains(card, want) {
+				t.Errorf("%s: the need's card has no %s: %s", p, want, card)
+			}
+		}
+		if strings.Contains(card, `.md"`) || strings.Contains(card, `.md#`) {
+			t.Errorf("%s: the need's card still links a .md file: %s", p, card)
+		}
+	}
+}

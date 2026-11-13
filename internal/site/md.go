@@ -52,8 +52,20 @@ func recordMD(c *ctx) goldmark.Markdown {
 	)
 }
 
-// plainMD is markdown-it's commonmark preset with raw HTML: what the overview renders request descriptions with.
-var plainMD = goldmark.New(goldmark.WithRendererOptions(ghtml.WithUnsafe()))
+// needMD is markdown-it's commonmark preset with raw HTML, plus the link rewrite: what the overview renders request
+// descriptions with, so that a relative .md link in one points at the record's page there too, as it does on the
+// record pages that show the same card. Its links resolve as written from needBase.
+func needMD(recs []*Record) goldmark.Markdown {
+	return goldmark.New(
+		goldmark.WithParserOptions(parser.WithASTTransformers(
+			util.Prioritized(linkRewrite{&ctx{rel: needBase, recs: recs}}, 200))),
+		goldmark.WithRendererOptions(ghtml.WithUnsafe()))
+}
+
+// needBase is the record a request's description is read as written from on the overview: one directory under the
+// store, as is every record page that shows its card (projects/, sprints/, days/), so ../docs/x.md names
+// records/docs/x.md. The overview is the site's root, where a browser resolves ../docs/x.html to docs/x.html.
+const needBase = "sprints/_overview"
 
 // commentMD renders comments and model summaries: raw HTML is not parsed, so it shows as text (markdown-it's
 // html=False).
